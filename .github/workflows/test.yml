@@ -4,6 +4,9 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -23,9 +26,12 @@ jobs:
         run: |
           # Run tests only when GOARCH is amd64, otherwize run builds only.
           if [ "${{ matrix.goarch }}" = "amd64" ]; then
-            make build test
+            test -z "$(gofmt -l dns/cloudflare.go dns/cloudflare_test.go)"
+            go vet ./...
+            go test -race ./dns
+            make VERSION="cloudflare-sync-${GITHUB_SHA::12}" build test
           else
-            GOARCH=${{ matrix.goarch }} make build
+            GOARCH=${{ matrix.goarch }} make VERSION="cloudflare-sync-${GITHUB_SHA::12}" build
           fi
       - name: Upload artifact
         uses: actions/upload-artifact@v7
