@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -85,7 +86,12 @@ func (cf *Cloudflare) AddUpdateDomainRecords() config.Domains {
 }
 
 func (cf *Cloudflare) addUpdateDomainRecords(recordType string) {
-	ipAddr, domains := cf.Domains.GetNewIpResult(recordType)
+	// Cloudflare 每轮都读取远端记录，及时修复控制台修改或删除造成的漂移。
+	// 本机 IP 缓存无法反映远端变化，仅在实际记录有差异时写入。
+	ipAddr, domains := cf.Domains.Ipv4Addr, cf.Domains.Ipv4Domains
+	if recordType == "AAAA" {
+		ipAddr, domains = cf.Domains.Ipv6Addr, cf.Domains.Ipv6Domains
+	}
 
 	if ipAddr == "" {
 		return
@@ -98,13 +104,19 @@ func (cf *Cloudflare) addUpdateDomainRecords(recordType string) {
 		if err != nil {
 			util.Log("查询域名信息发生异常! %s", err)
 			domain.UpdateStatus = config.UpdatedFailed
-			return
+			continue
+		}
+
+		if !result.Success {
+			util.Log("查询域名信息发生异常! %s", strings.Join(result.Messages, ", "))
+			domain.UpdateStatus = config.UpdatedFailed
+			continue
 		}
 
 		if len(result.Result) == 0 {
 			util.Log("在DNS服务商中未找到根域名: %s", domain.DomainName)
 			domain.UpdateStatus = config.UpdatedFailed
-			return
+			continue
 		}
 
 		params := url.Values{}
@@ -133,13 +145,13 @@ func (cf *Cloudflare) addUpdateDomainRecords(recordType string) {
 		if err != nil {
 			util.Log("查询域名信息发生异常! %s", err)
 			domain.UpdateStatus = config.UpdatedFailed
-			return
+			continue
 		}
 
 		if !records.Success {
 			util.Log("查询域名信息发生异常! %s", strings.Join(records.Messages, ", "))
 			domain.UpdateStatus = config.UpdatedFailed
-			return
+			continue
 		}
 
 		if len(records.Result) > 0 {
@@ -194,6 +206,10 @@ func (cf *Cloudflare) modify(result CloudflareRecordsResp, zoneID string, domain
 
 	for _, record := range result.Result {
 		ipChanged := record.Content != ipAddr
+		// IPv6 的压缩和展开表示可能不同，避免每轮重复写入同一个地址。
+		if currentIP, desiredIP := net.ParseIP(record.Content), net.ParseIP(ipAddr); currentIP != nil && desiredIP != nil {
+			ipChanged = !currentIP.Equal(desiredIP)
+		}
 		proxiedChanged := manageProxied && record.Proxied != desiredProxied
 
 		// 相同不修改

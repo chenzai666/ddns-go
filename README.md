@@ -23,6 +23,7 @@
 - 支持接口/网卡/[命令](https://github.com/jeessy2/ddns-go/wiki/通过命令获取IP参考)获取IP
 - 支持以服务的方式运行
 - 默认间隔5分钟同步一次
+- Cloudflare 每个同步周期都查询实际 DNS 记录，本机 IP 未变化时也会纠正控制台修改的 IP，或重建被删除的记录；仅有差异时写入
 - 支持同时配置多个DNS服务商
 - 支持多个域名同时解析
 - 支持多级域名
@@ -49,7 +50,7 @@
 - [可选] 支持安装带参数
   - `-l` 监听地址
   - `-f` 同步间隔时间(秒)
-  - `-cacheTimes` 间隔N次与服务商比对
+  - `-cacheTimes` 间隔N次与服务商比对（Cloudflare 每轮均比对，不受此参数影响）
   - `-c` 自定义配置文件路径
   - `-noweb` 不启动web服务
   - `-skipVerify` 跳过证书验证
@@ -69,6 +70,23 @@
     ./ddns-go -resetPassword 123456
     ./ddns-go -resetPassword 123456 -c /Users/name/.ddns_go_config.yaml
     ```
+
+### Cloudflare 同步说明
+
+本分支参考 [cloudflare-ddns](https://github.com/chenzai666/cloudflare-ddns) 的每轮查询机制，使用 Cloudflare API 读取实际记录，以本机获取的公网 IP 为准更新 A/AAAA 记录。手动在 Cloudflare 控制台修改 IP 后，下一轮会自动改回本机 IP；被删除的记录会重新创建。记录一致时只查询，不重复写入；未指定 `proxied` 参数时保留现有代理状态。
+
+原先默认 `-f 300 -cacheTimes 5` 在本机 IP 不变时会跳过 5 轮查询，约 30 分钟才重新核对远端。本分支的 Cloudflare 每轮均核对，默认间隔仍是 300 秒。建议需要快速纠偏时设为 60 秒，实际纠偏时间包含本轮网络请求耗时；其他服务商继续使用原缓存规则。
+
+```bash
+# 前台运行，每 60 秒核对一次，Web 界面仅监听本机
+./ddns-go -f 60 -l 127.0.0.1:9876 -c /path/to/.ddns_go_config.yaml
+```
+
+已有服务应在备份配置后，将启动参数中的 `-f` 调整为 `60` 并重启。使用本分支构建的程序；上游发行包不包含本分支的修改。建议先使用测试子域名验证，再替换正式服务，并保留旧程序用于回滚。
+
+验证时可在控制台把测试记录改为其他 IP，观察下一轮日志及 Cloudflare 记录是否恢复；再确认下一轮记录一致时不出现更新成功日志。开启 Cloudflare 代理时，用 API 或控制台查看记录内容，公共 DNS 查询显示的是代理节点 IP。
+
+令牌只授予目标区域的 DNS 编辑和区域读取权限，避免多个 DDNS 程序同时管理同一条记录。每轮每个域名通常会查询一次区域和一次记录，多域名或很短的同步间隔会增加 API 请求量。
 
 ## Docker中使用
 
