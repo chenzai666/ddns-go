@@ -1,15 +1,20 @@
 # DDNS-GO
 
-[![GitHub release](https://img.shields.io/github/release/jeessy2/ddns-go.svg?logo=github&style=flat-square) ![GitHub release downloads](https://img.shields.io/github/downloads/jeessy2/ddns-go/total?logo=github)](https://github.com/jeessy2/ddns-go/releases/latest) [![Go version](https://img.shields.io/github/go-mod/go-version/jeessy2/ddns-go)](https://github.com/jeessy2/ddns-go/blob/master/go.mod) [![](https://goreportcard.com/badge/github.com/jeessy2/ddns-go/v6)](https://goreportcard.com/report/github.com/jeessy2/ddns-go/v6) [![](https://img.shields.io/docker/image-size/jeessy/ddns-go)](https://registry.hub.docker.com/r/jeessy/ddns-go) [![](https://img.shields.io/docker/pulls/jeessy/ddns-go)](https://registry.hub.docker.com/r/jeessy/ddns-go)
+[![GitHub release](https://img.shields.io/github/release/chenzai666/ddns-go.svg?logo=github&style=flat-square) ![GitHub release downloads](https://img.shields.io/github/downloads/chenzai666/ddns-go/total?logo=github)](https://github.com/chenzai666/ddns-go/releases/latest) [![Go version](https://img.shields.io/github/go-mod/go-version/chenzai666/ddns-go)](https://github.com/chenzai666/ddns-go/blob/master/go.mod)
 
-中文 | [English](https://github.com/jeessy2/ddns-go/blob/master/README_EN.md)
+中文 | [英文通用说明](https://github.com/chenzai666/ddns-go/blob/master/README_EN.md)
 
 自动获得你的公网 IPv4 或 IPv6 地址，并解析到对应的域名服务。
+
+本仓库是 [chenzai666/ddns-go](https://github.com/chenzai666/ddns-go)，基于 [jeessy2/ddns-go](https://github.com/jeessy2/ddns-go) 增加 Cloudflare 远端记录纠偏：每个同步周期查询实际记录，本机 IP 未改变时，也会纠正控制台手动修改的 IP，或重建被删除的记录。建议使用 `-f 60` 每 60 秒核对一次。
+
+**[下载本分支最新版](https://github.com/chenzai666/ddns-go/releases/latest)**：本定制版发布跨平台程序包，推荐按下文安装为系统服务。在 Release 的 Assets 中按操作系统和架构选择程序包，同时下载 `checksums.txt` 校验文件。
 
 - [DDNS-GO](#ddns-go)
     - [特性](#特性)
     - [系统中使用](#系统中使用)
-    - [Docker中使用](#docker中使用)
+        - [下载与更新](#下载与更新)
+        - [Cloudflare 同步说明](#cloudflare-同步说明)
     - [使用IPv6](#使用ipv6)
     - [Webhook](#webhook)
     - [Callback](#callback)
@@ -38,7 +43,7 @@
 
 ## 系统中使用
 
-- 从 [Releases](https://github.com/jeessy2/ddns-go/releases) 下载并解压 ddns-go
+- 从 [本仓库 Releases](https://github.com/chenzai666/ddns-go/releases/latest) 下载并解压 ddns-go
 - 安装服务
   - Mac/Linux: `sudo ./ddns-go -s install`
   - Win(以管理员打开cmd): `.\ddns-go.exe -s install`
@@ -61,7 +66,7 @@
     ```bash
     ./ddns-go -s install -f 600 -c /Users/name/.ddns_go_config.yaml
     ```
-  - 每 10 秒检查一次本地 IP 变化, 每 30 分钟对比一下 IP 变化, 实现 IP 变化即时触发更新且不会被服务商限流, 如果使用接口获取IP, 需要注意接口限流
+  - 其他服务商可每 10 秒检查本地 IP，并按缓存周期核对服务商；使用接口获取 IP 时注意接口限流。Cloudflare 忽略 `-cacheTimes`，此示例会每 10 秒查询 Cloudflare，建议改用下文的 60 秒配置
     ```bash
     ./ddns-go -s install -f 10 -cacheTimes 180
     ```
@@ -70,6 +75,17 @@
     ./ddns-go -resetPassword 123456
     ./ddns-go -resetPassword 123456 -c /Users/name/.ddns_go_config.yaml
     ```
+
+### 下载与更新
+
+1. 打开 [本分支最新 Release](https://github.com/chenzai666/ddns-go/releases/latest)，选择与设备系统、架构匹配的程序包：Linux x86_64 通常用于 Intel/AMD 64 位设备，Linux arm64 用于 ARM 64 位设备，Windows 选择对应的 `.zip`，macOS 选择 Darwin 包。
+2. 下载程序包及 `checksums.txt`，核对程序包的 SHA-256；解压后先运行 `./ddns-go -v`（Windows 使用 `.\ddns-go.exe -v`）确认版本。
+3. 停止现有 DDNS-GO 服务，备份旧程序和原配置文件，再将解压后的程序替换到原安装位置，保留配置内容、权限和原服务账户。
+4. 将现有服务启动参数中的同步间隔设为 `-f 60`，继续使用原来的 `-c` 配置路径，然后启动服务。新安装时可参考下方示例；服务已存在时修改原服务参数，无需重复安装。
+5. 先使用测试子域名检查日志和 Cloudflare 记录，确认能纠正手动修改后，再用于正式域名；保留旧程序及配置备份，便于回滚。
+
+> [!IMPORTANT]
+> 当前内置 `-u` 更新命令仍从上游 `jeessy2/ddns-go` 获取版本。为保留本分支的 Cloudflare 修复，请按以上步骤从本仓库 Releases 手动更新。
 
 ### Cloudflare 同步说明
 
@@ -88,51 +104,11 @@
 
 令牌只授予目标区域的 DNS 编辑和区域读取权限，避免多个 DDNS 程序同时管理同一条记录。每轮每个域名通常会查询一次区域和一次记录，多域名或很短的同步间隔会增加 API 请求量。
 
-## Docker中使用
-
-- 挂载主机目录, 使用docker host模式。可把 `/opt/ddns-go` 替换为你主机任意目录, 配置文件为隐藏文件
-
-  ```bash
-  docker run -d --name ddns-go --restart=always --net=host -v /opt/ddns-go:/root jeessy/ddns-go
-  ```
-
-- 打开浏览器并访问`http://Docker主机IP:9876`进行初始化配置
-
-- [可选] 使用 `ghcr.io` 镜像
-
-  ```bash
-  docker run -d --name ddns-go --restart=always --net=host -v /opt/ddns-go:/root ghcr.io/jeessy2/ddns-go
-  ```
-
-- [可选] 支持启动带参数 `-l`监听地址 `-f`间隔时间(秒)
-
-  ```bash
-  docker run -d --name ddns-go --restart=always --net=host -v /opt/ddns-go:/root jeessy/ddns-go -l :9877 -f 600
-  ```
-
-- [可选] 不使用docker host模式
-
-  ```bash
-  docker run -d --name ddns-go --restart=always -p 9876:9876 -v /opt/ddns-go:/root jeessy/ddns-go
-  ```
-
-- [可选] 重置密码
-
-  ```bash
-  docker exec ddns-go ./ddns-go -resetPassword 123456
-  docker restart ddns-go
-  ```
-
 ## 使用IPv6
 
 - 前提：你的电脑或终端能正常获取IPv6，并能正常访问IPv6
-- Windows/Mac：推荐 [系统中使用](#系统中使用)，Windows/Mac桌面版的docker不支持`--net=host`
-- 群晖：
-  - 套件中心下载docker并打开
-  - 注册表中搜索`ddns-go`并下载
-  - 映像 -> 选择`jeessy/ddns-go` -> 启动 -> 高级设置 -> 网络中勾选`使用与 Docker Host 相同的网络`，高级设置中勾选`启动自动重新启动`
-  - 在浏览器中打开`http://群晖IP:9876`，修改你的配置，成功
-- Linux的x86或arm架构，推荐使用Docker的`--net=host`模式。参考 [Docker中使用](#Docker中使用)
+- Windows/Mac/Linux：按 [系统中使用](#系统中使用) 安装相应架构的程序包，并在 Web 界面启用 IPv6
+- 群晖等 NAS：选择匹配 CPU 架构的 Linux 程序包，以具有所需网络访问权限的账户运行，并通过服务管理或任务计划设置开机启动
 - 虚拟机中使用有可能正常获取IPv6，但不能正常访问IPv6
 
 ## Webhook
@@ -314,4 +290,3 @@
 
 - 如果喜欢从源代码编译自己的版本，可以使用本项目提供的 Makefile 构建
 - 使用 `make build` 生成本地编译后的 `ddns-go` 可执行文件
-- 使用 `make build_docker_image` 自行编译 Docker 镜像
